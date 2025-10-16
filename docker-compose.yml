@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=you@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+
+  authelia:
+    image: authelia/authelia:latest
+    volumes:
+      - ./authelia:/config
+    environment:
+      - TZ=America/New_York
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authelia.rule=Host(`auth.long-cao.dev`)
+      - traefik.http.routers.authelia.entrypoints=websecure
+      - traefik.http.routers.authelia.tls.certresolver=letsencrypt
+      - traefik.http.services.authelia.loadbalancer.server.port=9091
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    depends_on: [postgres]
+    environment:
+      DATABASE_URL: postgresql://umami:umami@postgres:5432/umami
+      APP_SECRET: "change-me"
+    labels:
+      - traefik.enable=true
+
+      # Public routes (no auth)
+      - traefik.http.routers.umami-public.rule=Host(`analytics.long-cao.dev`) && (Path(`/script.js`) || PathPrefix(`/api/send`))
+      - traefik.http.routers.umami-public.entrypoints=websecure
+      - traefik.http.routers.umami-public.tls.certresolver=letsencrypt
+      - traefik.http.services.umami.loadbalancer.server.port=3000
+
+      # Private routes (Authelia)
+      - traefik.http.routers.umami-private.rule=Host(`analytics.long-cao.dev`)
+      - traefik.http.routers.umami-private.entrypoints=websecure
+      - traefik.http.routers.umami-private.tls.certresolver=letsencrypt
+      - traefik.http.routers.umami-private.middlewares=authelia@docker
+      - traefik.http.middlewares.authelia.forwardauth.address=http://authelia:9091/api/verify?rd=https://auth.long-cao.dev
+      - traefik.http.middlewares.authelia.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.authelia.forwardauth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Email
+
