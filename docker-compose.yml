@@ -13,8 +13,8 @@ services:
       - --certificatesresolvers.letsencrypt.acme.email=you@example.com
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
     ports:
-      - "8080:80"   # Changed from 80:80 to 8080:80
-      - "8443:443"  # Changed from 443:443 to 8443:443
+      - "9080:80"   # Using port 9080 for HTTP
+      - "9443:443"  # Using port 9443 for HTTPS
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./letsencrypt:/letsencrypt
